@@ -1,0 +1,161 @@
+---
+title: "Technical Assessment using Malaria Datasets"
+author: "Faith Tan"
+date: "4 November 2021"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(DT)
+
+#Reading in the data as csv files
+malaria_deaths<-read.csv("malaria_deaths.csv")
+malaria_deaths_age<-read.csv("malaria_deaths_age.csv")
+malaria_inc<-read.csv("malaria_inc.csv")
+
+#Checking for missing values
+any(is.na(malaria_deaths))
+any(is.na(malaria_inc))
+#no missing values
+
+#identifying missing values
+any(is.na(malaria_deaths_age))
+which(is.na(malaria_deaths_age))
+#missing values are in the column for code, as some entities are continents
+#there is no country code for it
+
+#Editing the column names for easier coding
+colnames(malaria_deaths)[4] <- "Deaths"
+colnames(malaria_inc)[4] <- "Incidence_of_Malaria"
+
+#Removing column "X" from malaria_deaths_age
+malaria_deaths_age<-malaria_deaths_age[,-1]
+```
+
+
+## Mortality throughout the Years
+
+This interactive section showcases the mortality of malaria of the entities through the years 2000, 2005, 2010 and 2015 based on the incidence and number of deaths. Please select based on the year you would like to view.
+
+For overall cleanliness, entities without a code were removed due to the lack of space, as there would be an overlap with respect to the names of the entities. Therefore, the codes of the entities were used instead.
+
+```{r mortality, echo=FALSE}
+#Changing the incidence to per 100,000
+malaria_inc[4]<-malaria_inc[4]*100
+
+#Want to find the mortality rate in available countries/regions
+#in years 2000, 2005, 2010, 2015
+#Filtering out data for the relevant years
+deaths_00_15 <- malaria_deaths[!(is.na(malaria_deaths$Code)|malaria_deaths$Code==""), ] %>%
+  filter(Year==2000|Year==2005|Year==2010|Year==2015)
+deaths_00_15<-deaths_00_15%>%
+  filter(!Entity=="World")
+
+#Merging incidence and death rates together
+mortality<-merge(malaria_inc, deaths_00_15, by=c("Entity","Code","Year"))
+
+#Filtering out countries with <1 death
+mortality<-mortality %>%
+  filter(Deaths>=1)
+
+#Adding a column to show mortality
+mortality[6]<-mortality[5]/mortality[4]
+colnames(mortality)[6]<-"Mortality"
+
+#Check if data is present for all years for each entity
+year_check<-mortality %>%
+  group_by(Entity) %>%
+  summarize(n(),.groups = 'drop')
+
+#Removing entities that do not have data for all 4 years
+year_check <- year_check %>%
+  filter(year_check[,2]==4)
+
+#Merging to remove entities that do not have data for all 4 years
+mortality<-merge(year_check,mortality, by=c("Entity"))
+
+#Creating a slider input for entity
+inputPanel(
+  sliderInput("year_m", "Year:", min = 2000, max = 2015, value = 2000,
+              sep = "")
+)
+
+#Producing the plot based on the input
+renderPlot({
+  specifics_1<-mortality %>%
+  filter(Year == as.numeric(input$year_m))
+  ggplot(specifics_1, aes(x=Code, y=Mortality)) +
+  geom_bar(stat="identity",aes(group=Code,fill=factor(..x..)), alpha=0.5,
+           show.legend = FALSE)+
+  theme(text=element_text(size=9))+
+  labs(y="Mortality (per 100,000)", x= "Year")
+})
+```
+
+## Deaths by Age Group and Entity
+
+This interactive section will allow you to select multiple inputs in order to find
+specific data from the entity and age range that you like.
+
+```{r deaths_age, echo=FALSE}
+#Creating new dataframes to use for choices
+groups<-unique(malaria_deaths_age$age_group)
+entities<-unique(malaria_deaths_age$entity)
+
+#Cleaning groups to put "70 or older" below the others
+groups<-groups[-2]
+groups<-c(groups,"70 or older","All Ages")
+
+#Creating 2 select inputs
+inputPanel(
+  selectInput("age_group", "Age Group:", groups, selected = groups[1]),
+  selectInput("entities", "Entity:", entities, selected = entities[1])
+)
+
+#Creating the desired plot based on input
+renderPlot({
+  if (input$age_group=="All Ages"){
+    specifics_2 <- malaria_deaths_age %>%
+      filter(entity %in% input$entities)
+    ggplot(specifics_2, aes(x=year, y=deaths)) +
+  geom_bar(stat="identity",aes(group=entity,fill=factor(..x..)), alpha=0.5,
+           show.legend = FALSE)+
+  theme(text=element_text(size=20))+
+  labs(y="Number of Deaths (per 100,000)", x= "Year")
+  } else {
+    specifics_2 <-malaria_deaths_age %>%
+  filter(age_group %in% input$age_group & entity %in% input$entities)
+  ggplot(specifics_2, aes(x=year, y=deaths)) +
+  geom_bar(stat="identity",aes(group=entity,fill=factor(..x..)), alpha=0.5,
+           show.legend = FALSE)+
+  theme(text=element_text(size=20))+
+  labs(y="Number of Deaths (per 100,000)", x= "Year")
+  }
+})
+```
+
+## Summary of Age Groups in a particular Entity and Year
+
+By selecting the desired entity and year, you will be able to find out the summary of how many deaths occurred in each age group.
+
+```{r highest, echo=FALSE}
+#Creating a select and slider type input for the output
+#No need to recreate the vector "groups"
+inputPanel(
+  selectInput("entity_highest", "Entity:", entities, selected = entities[1]),
+  sliderInput("year_highest","Year:", min = 1990, max = 2016, value = 2000,
+            step = 1, sep = "")
+)
+
+#Creating a table to display desired outputs
+renderTable({
+    malaria_deaths_age %>%
+    filter(entity %in% input$entity_highest & year  == as.numeric(input$year_highest)) %>%
+    select(age_group, deaths)
+})
+
+```
