@@ -1,5 +1,6 @@
 # Technical-Assessment
 Author: Faith Tan
+
 Date created: 4 November 2021
 
 This code was created with the task at hand in mind, and in order to showcase best what I know how to do, I decided to produce 3 visualizations with Shiny in Markdown.
